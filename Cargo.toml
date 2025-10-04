@@ -1,0 +1,11 @@
+[package]
+name = "nvme-oxide"
+version = "0.1.1"
+edition = "2024"
+repository = "https://github.com/H4n-uL/nvme-oxide"
+description = "Bare-metal lightweight NVMe driver"
+license = "MIT-0"
+keywords = ["nvme", "no_std"]
+
+[dependencies]
+spin = "0.10.0"
