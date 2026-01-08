@@ -8,7 +8,8 @@ pub enum NVMeError {
     FullQp,
     CmdFail(u16),
     IoError,
-    InvBuf
+    InvBuf,
+    MapFail,
 }
 
 pub type Result<T> = CoreResult<T, NVMeError>;

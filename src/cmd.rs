@@ -13,7 +13,7 @@ pub struct Sqe {
     pub cdw12: u32,
     pub cdw13: u32,
     pub cdw14: u32,
-    pub cdw15: u32
+    pub cdw15: u32,
 }
 
 pub struct Cmd {
@@ -23,7 +23,7 @@ pub struct Cmd {
     pub prp2: u64,
     pub cdw10: u32,
     pub cdw11: u32,
-    pub cdw12: u32
+    pub cdw12: u32,
 }
 
 impl Cmd {
@@ -35,7 +35,7 @@ impl Cmd {
             prp2: 0,
             cdw10: 0,
             cdw11: 0,
-            cdw12: 0
+            cdw12: 0,
         };
     }
 
@@ -53,7 +53,7 @@ impl Cmd {
             cdw12: self.cdw12,
             cdw13: 0,
             cdw14: 0,
-            cdw15: 0
+            cdw15: 0,
         };
     }
 

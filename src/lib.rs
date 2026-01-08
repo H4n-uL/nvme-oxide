@@ -16,8 +16,8 @@ pub use crate::{
     ctrl::Ctrl,
     dev::NVMeDev,
     err::{NVMeError, Result},
-    id::{CtrlId, LbaFormat, NsId, PwrStDesc, LogSmart, LogErr},
+    id::{CtrlId, LbaFormat, LogErr, LogSmart, NsId, PwrStDesc},
     ns::Ns,
     queue::{Cq, Sq},
-    ram::Dma
+    ram::Dma,
 };

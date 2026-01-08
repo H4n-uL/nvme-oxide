@@ -3,25 +3,25 @@ use crate::{NVMeError, Result};
 pub trait Dma: Send + Sync {
     unsafe fn alloc(&self, size: usize) -> usize;
     unsafe fn free(&self, addr: usize, size: usize);
+    unsafe fn map_mmio(&self, phys: usize, size: usize) -> usize;
+    unsafe fn unmap_mmio(&self, virt: usize, size: usize);
     fn virt_to_phys(&self, va: usize) -> usize;
 }
 
 pub struct PrpList {
     pub addr: usize,
-    pub sz: usize
+    pub sz: usize,
 }
 
 impl PrpList {
     pub fn free<A: Dma>(&self, alloc: &A) {
-        unsafe { alloc.free(self.addr, self.sz); }
+        unsafe {
+            alloc.free(self.addr, self.sz);
+        }
     }
 }
 
-pub fn build_prp<A: Dma>(
-    alloc: &A,
-    buf: usize,
-    sz: usize
-) -> Result<(u64, u64, Option<PrpList>)> {
+pub fn build_prp<A: Dma>(alloc: &A, buf: usize, sz: usize) -> Result<(u64, u64, Option<PrpList>)> {
     if buf & 0x3 != 0 {
         return Err(NVMeError::InvBuf);
     }
@@ -62,5 +62,12 @@ pub fn build_prp<A: Dma>(
 
     let list_pa = alloc.virt_to_phys(list_va) as u64;
 
-    return Ok((prp1, list_pa, Some(PrpList { addr: list_va, sz: list_aligned })));
+    return Ok((
+        prp1,
+        list_pa,
+        Some(PrpList {
+            addr: list_va,
+            sz: list_aligned,
+        }),
+    ));
 }

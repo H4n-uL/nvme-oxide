@@ -1,6 +1,21 @@
-use crate::{cmd::Cmd, id::CtrlId, queue::{Cqe, Queue}, reg, Dma, LogErr, LogSmart, NVMeError, Result};
-use core::{hint::spin_loop, sync::atomic::{AtomicBool, AtomicU16, Ordering}};
-use alloc::{string::{String, ToString}, sync::Arc, collections::BTreeMap, vec::Vec};
+use crate::{
+    Dma, LogErr, LogSmart, NVMeError, Result,
+    cmd::Cmd,
+    id::CtrlId,
+    queue::{Cqe, Queue},
+    reg,
+};
+
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
+use core::{
+    hint::spin_loop,
+    sync::atomic::{AtomicBool, AtomicU16, Ordering},
+};
 use spin::Mutex;
 
 pub struct CtrlData {
@@ -9,24 +24,46 @@ pub struct CtrlData {
     pub firm: String,
     pub mts: usize,
     pub mqe: u16,
-    pub min_pg: usize
+    pub min_pg: usize,
 }
 
 pub struct Ctrl<A: Dma> {
     mmio: usize,
+    mmio_size: usize,
     dstrd: u8,
     admin: Mutex<Option<Queue<A>>>,
     io: Mutex<BTreeMap<u16, Arc<Queue<A>>>>,
     data: Arc<CtrlData>,
     alloc: Arc<A>,
     active: AtomicBool,
-    rr_cnt: AtomicU16
+    rr_cnt: AtomicU16,
 }
 
 impl<A: Dma> Ctrl<A> {
-    pub fn new(mmio: usize, alloc: A) -> Result<Self> {
+    pub fn new(mmio_phys: usize, alloc: A) -> Result<Self> {
+        let alloc = Arc::new(alloc);
+
+        let init_mmio = unsafe { alloc.map_mmio(mmio_phys, 0x1000) };
+        if init_mmio == 0 {
+            return Err(NVMeError::MapFail);
+        }
+
+        let cap: u64 = unsafe { (init_mmio as *const u64).read_volatile() };
+        let dstrd = ((cap >> 32) & 0xF) as u8;
+        let mqes = ((cap & 0xFFFF) + 1) as usize;
+
+        let mmio_size = 0x1000 + mqes * 2 * (4 << dstrd);
+
+        unsafe { alloc.unmap_mmio(init_mmio, 0x1000) };
+
+        let mmio = unsafe { alloc.map_mmio(mmio_phys, mmio_size) };
+        if mmio == 0 {
+            return Err(NVMeError::MapFail);
+        }
+
         let mut ctrl = Self {
             mmio,
+            mmio_size,
             dstrd: 0,
             admin: Mutex::new(None),
             io: Mutex::new(BTreeMap::new()),
@@ -36,11 +73,11 @@ impl<A: Dma> Ctrl<A> {
                 firm: String::new(),
                 mts: 0,
                 mqe: 0,
-                min_pg: 0
+                min_pg: 0,
             }),
-            alloc: Arc::new(alloc),
+            alloc,
             active: AtomicBool::new(true),
-            rr_cnt: AtomicU16::new(0)
+            rr_cnt: AtomicU16::new(0),
         };
 
         ctrl.init()?;
@@ -111,7 +148,7 @@ impl<A: Dma> Ctrl<A> {
             firm,
             mts,
             mqe: mqes as u16,
-            min_pg
+            min_pg,
         });
 
         unsafe { self.alloc.free(id_buf, id_buf_size) };
@@ -126,7 +163,9 @@ impl<A: Dma> Ctrl<A> {
     }
 
     unsafe fn write<T: Copy>(&self, offset: usize, val: T) {
-        return unsafe { ((self.mmio + offset) as *mut T).write_volatile(val); };
+        return unsafe {
+            ((self.mmio + offset) as *mut T).write_volatile(val);
+        };
     }
 
     pub fn admin_cmd(&self, cmd: &Cmd) -> Result<()> {
@@ -313,7 +352,9 @@ impl<A: Dma> Ctrl<A> {
             }
         }
 
-        unsafe { self.alloc.free(buf, 4096); }
+        unsafe {
+            self.alloc.free(buf, 4096);
+        }
         return Ok(ns_list);
     }
 
@@ -345,7 +386,9 @@ impl<A: Dma> Ctrl<A> {
         self.admin_cmd(&cmd)?;
 
         let smart = unsafe { (buf as *const LogSmart).read_volatile() };
-        unsafe { self.alloc.free(buf, 512); }
+        unsafe {
+            self.alloc.free(buf, 512);
+        }
 
         return Ok(smart);
     }
@@ -430,7 +473,9 @@ impl<A: Dma> Ctrl<A> {
                 self.new_ioq(io_size)?;
             }
         } else if target < cur_cnt {
-            let to_remove: Vec<u16> = self.io.lock()
+            let to_remove: Vec<u16> = self
+                .io
+                .lock()
                 .keys()
                 .filter(|&&qid| qid > target)
                 .copied()
@@ -446,9 +491,7 @@ impl<A: Dma> Ctrl<A> {
 
     pub fn en_async_ev(&self) -> Result<()> {
         let mut aec = crate::id::AsyncEventConfig::new();
-        aec.en_smart_hlt()
-           .en_ns_attr()
-           .en_fw_actv();
+        aec.en_smart_hlt().en_ns_attr().en_fw_actv();
 
         return self.set_feat(crate::id::FT_ASYNC, aec.value);
     }
@@ -472,5 +515,8 @@ impl<A: Dma> Ctrl<A> {
 impl<A: Dma> Drop for Ctrl<A> {
     fn drop(&mut self) {
         let _ = self.shutdown();
+        unsafe {
+            self.alloc.unmap_mmio(self.mmio, self.mmio_size);
+        }
     }
 }

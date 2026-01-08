@@ -83,7 +83,7 @@ pub struct CtrlId {
     _5: [u8; 156],
     __iocs: [u8; 1344],
     pub psd: [PwrStDesc; 32],
-    _vendor: [u8; 1024]
+    _vendor: [u8; 1024],
 }
 
 #[repr(C, packed)]
@@ -103,7 +103,7 @@ pub struct PwrStDesc {
     _1: u8,
     pub actp: u16,
     pub apw_aps: u8,
-    _2: [u8; 9]
+    _2: [u8; 9],
 }
 
 #[repr(C, packed)]
@@ -149,7 +149,7 @@ pub struct NsId {
     pub lbaf: [LbaFormat; 16],
     _2: [u8; 192],
     _3: [u8; 2688],
-    _vendor: [u8; 1024]
+    _vendor: [u8; 1024],
 }
 
 #[repr(C, packed)]
@@ -157,23 +157,20 @@ pub struct NsId {
 pub struct LbaFormat {
     pub ms: u16,
     pub lbads: u8,
-    pub rp: u8
+    pub rp: u8,
 }
 
 impl CtrlId {
     pub fn serial(&self) -> &str {
-        return core::str::from_utf8(&self.sn)
-            .unwrap_or("").trim_end();
+        return core::str::from_utf8(&self.sn).unwrap_or("").trim_end();
     }
 
     pub fn model(&self) -> &str {
-        return core::str::from_utf8(&self.mn)
-            .unwrap_or("").trim_end();
+        return core::str::from_utf8(&self.mn).unwrap_or("").trim_end();
     }
 
     pub fn firm(&self) -> &str {
-        return core::str::from_utf8(&self.fr)
-            .unwrap_or("").trim_end();
+        return core::str::from_utf8(&self.fr).unwrap_or("").trim_end();
     }
 
     pub fn max_xfer(&self, pg_size: usize) -> Option<usize> {
@@ -261,7 +258,7 @@ pub struct LogErr {
     _0: [u8; 2],
     pub cs: u64,
     pub trtype_spec: u16,
-    _1: [u8; 22]
+    _1: [u8; 22],
 }
 
 #[repr(C, packed)]
@@ -291,7 +288,7 @@ pub struct LogSmart {
     pub tmp2_cnt: u32,
     pub tmp1_tm: u32,
     pub tmp2_tm: u32,
-    _1: [u8; 280]
+    _1: [u8; 280],
 }
 
 #[repr(C, packed)]
@@ -300,7 +297,7 @@ pub struct LogPageFwSlot {
     pub afi: u8,
     _0: [u8; 7],
     pub frs: [[u8; 8]; 7],
-    _1: [u8; 448]
+    _1: [u8; 448],
 }
 
 pub const LOG_ERR: u8 = 0x01;
@@ -330,7 +327,7 @@ pub const FT_NOP_PS: u8 = 0x11;
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct AsyncEventConfig {
-    pub value: u32
+    pub value: u32,
 }
 
 impl AsyncEventConfig {
@@ -357,7 +354,7 @@ impl AsyncEventConfig {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct AsyncEventInfo {
-    pub dw0: u32
+    pub dw0: u32,
 }
 
 impl AsyncEventInfo {

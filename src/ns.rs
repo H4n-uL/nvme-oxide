@@ -1,11 +1,12 @@
-use crate::{cmd::Cmd, id::NsId, ram::build_prp, Ctrl, Dma, NVMeError, Result};
+use crate::{Ctrl, Dma, NVMeError, Result, cmd::Cmd, id::NsId, ram::build_prp};
+
 use alloc::sync::Arc;
 
 pub struct Ns<A: Dma> {
     ctrl: Arc<Ctrl<A>>,
     nsid: u32,
     blk_sz: usize,
-    blk_cnt: u64
+    blk_cnt: u64,
 }
 
 impl<A: Dma> Ns<A> {
@@ -35,7 +36,7 @@ impl<A: Dma> Ns<A> {
                 ctrl,
                 nsid,
                 blk_sz,
-                blk_cnt
+                blk_cnt,
             });
         }
     }
@@ -54,11 +55,8 @@ impl<A: Dma> Ns<A> {
 
     pub fn read(&self, lba: u64, buf: &mut [u8]) -> Result<()> {
         let nlb = (buf.len() / self.blk_sz) as u16;
-        let (prp1, prp2, prp_list) = build_prp(
-            self.ctrl.alloc(),
-            buf.as_ptr() as usize,
-            buf.len()
-        )?;
+        let (prp1, prp2, prp_list) =
+            build_prp(self.ctrl.alloc(), buf.as_ptr() as usize, buf.len())?;
 
         let cmd = Cmd::read(self.nsid, lba, nlb, prp1, prp2);
         let res = self.ctrl.io_cmd(&cmd);
@@ -72,11 +70,8 @@ impl<A: Dma> Ns<A> {
 
     pub fn write(&self, lba: u64, buf: &[u8]) -> Result<()> {
         let nlb = (buf.len() / self.blk_sz) as u16;
-        let (prp1, prp2, prp_list) = build_prp(
-            self.ctrl.alloc(),
-            buf.as_ptr() as usize,
-            buf.len()
-        )?;
+        let (prp1, prp2, prp_list) =
+            build_prp(self.ctrl.alloc(), buf.as_ptr() as usize, buf.len())?;
 
         let cmd = Cmd::write(self.nsid, lba, nlb, prp1, prp2);
         let res = self.ctrl.io_cmd(&cmd);
@@ -98,7 +93,7 @@ impl<A: Dma> Ns<A> {
         struct DsmRange {
             context_attr: u32,
             length: u32,
-            slba: u64
+            slba: u64,
         }
 
         let range_buf = unsafe { self.ctrl.alloc().alloc(16) };
@@ -109,7 +104,7 @@ impl<A: Dma> Ns<A> {
         let range = DsmRange {
             context_attr: 0,
             length: blocks as u32,
-            slba: lba
+            slba: lba,
         };
 
         unsafe {
@@ -120,7 +115,9 @@ impl<A: Dma> Ns<A> {
         let cmd = Cmd::dset_mgmt(self.nsid, 0, range_phys, 0x4);
         let res = self.ctrl.io_cmd(&cmd);
 
-        unsafe { self.ctrl.alloc().free(range_buf, 16); }
+        unsafe {
+            self.ctrl.alloc().free(range_buf, 16);
+        }
         return res;
     }
 
@@ -136,11 +133,8 @@ impl<A: Dma> Ns<A> {
 
     pub fn compare(&self, lba: u64, buf: &[u8]) -> Result<()> {
         let nlb = (buf.len() / self.blk_sz) as u16;
-        let (prp1, prp2, prp_list) = build_prp(
-            self.ctrl.alloc(),
-            buf.as_ptr() as usize,
-            buf.len()
-        )?;
+        let (prp1, prp2, prp_list) =
+            build_prp(self.ctrl.alloc(), buf.as_ptr() as usize, buf.len())?;
 
         let cmd = Cmd::cmp(self.nsid, lba, nlb, prp1, prp2);
         let res = self.ctrl.io_cmd(&cmd);

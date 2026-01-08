@@ -71,7 +71,7 @@ pub fn doorbell_cq(qid: u16, dstrd: u8) -> usize {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct CapReg {
-    value: u64
+    value: u64,
 }
 
 impl CapReg {
@@ -131,7 +131,7 @@ impl CapReg {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct CcReg {
-    value: u32
+    value: u32,
 }
 
 impl CcReg {
@@ -195,7 +195,7 @@ impl CcReg {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct CstsReg {
-    value: u32
+    value: u32,
 }
 
 impl CstsReg {

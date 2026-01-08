@@ -1,9 +1,10 @@
 use crate::{Ctrl, Dma, Ns, Result};
-use alloc::{vec::Vec, sync::Arc};
+
+use alloc::{sync::Arc, vec::Vec};
 
 pub struct NVMeDev<A: Dma> {
     ctrl: Arc<Ctrl<A>>,
-    nss: Vec<Arc<Ns<A>>>
+    nss: Vec<Arc<Ns<A>>>,
 }
 
 impl<A: Dma> NVMeDev<A> {

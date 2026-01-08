@@ -1,5 +1,13 @@
-use crate::{cmd::{Cmd, Sqe}, reg, Dma, NVMeError, Result};
-use core::{marker::PhantomData, sync::atomic::{AtomicU16, AtomicU8, Ordering}};
+use crate::{
+    Dma, NVMeError, Result,
+    cmd::{Cmd, Sqe},
+    reg,
+};
+
+use core::{
+    marker::PhantomData,
+    sync::atomic::{AtomicU8, AtomicU16, Ordering},
+};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -9,7 +17,7 @@ pub struct Cqe {
     pub sqhd: u16,
     pub sqid: u16,
     pub cid: u16,
-    pub sf: u16
+    pub sf: u16,
 }
 
 impl Cqe {
@@ -34,7 +42,7 @@ pub struct Sq<A: Dma> {
     tail: AtomicU16,
     cid: AtomicU16,
     pending: AtomicU16,
-    _alloc: PhantomData<A>
+    _alloc: PhantomData<A>,
 }
 
 impl<A: Dma> Sq<A> {
@@ -59,7 +67,7 @@ impl<A: Dma> Sq<A> {
             tail: AtomicU16::new(0),
             cid: AtomicU16::new(0),
             pending: AtomicU16::new(0),
-            _alloc: PhantomData
+            _alloc: PhantomData,
         });
     }
 
@@ -104,7 +112,7 @@ pub struct Cq<A: Dma> {
     size: usize,
     head: AtomicU16,
     phase: AtomicU8,
-    _alloc: PhantomData<A>
+    _alloc: PhantomData<A>,
 }
 
 impl<A: Dma> Cq<A> {
@@ -128,7 +136,7 @@ impl<A: Dma> Cq<A> {
             size,
             head: AtomicU16::new(0),
             phase: AtomicU8::new(1),
-            _alloc: PhantomData
+            _alloc: PhantomData,
         });
     }
 
@@ -157,13 +165,16 @@ impl<A: Dma> Cq<A> {
         let next = (head + 1) % (self.size as u16);
 
         if next == 0 {
-            self.phase.store(if phase != 0 { 0 } else { 1 }, Ordering::Release);
+            self.phase
+                .store(if phase != 0 { 0 } else { 1 }, Ordering::Release);
         }
 
         self.head.store(next, Ordering::Release);
 
         let db = mmio + reg::doorbell_cq(self.qid, dstrd);
-        unsafe { (db as *mut u32).write_volatile(next as u32); }
+        unsafe {
+            (db as *mut u32).write_volatile(next as u32);
+        }
 
         if !cqe.ok() {
             return Err(NVMeError::CmdFail(cqe.status()));
@@ -176,7 +187,7 @@ impl<A: Dma> Cq<A> {
 pub struct Queue<A: Dma> {
     qid: u16,
     sq: Sq<A>,
-    cq: Cq<A>
+    cq: Cq<A>,
 }
 
 impl<A: Dma> Queue<A> {
@@ -184,7 +195,7 @@ impl<A: Dma> Queue<A> {
         return Ok(Self {
             qid,
             sq: Sq::new(qid, size, alloc)?,
-            cq: Cq::new(qid, size, alloc)?
+            cq: Cq::new(qid, size, alloc)?,
         });
     }
 
