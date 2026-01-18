@@ -18,15 +18,25 @@ use core::{
 };
 use spin::Mutex;
 
+/// Controller identification and capability data.
 pub struct CtrlData {
+    /// Serial number.
     pub serial: String,
+    /// Model name.
     pub model: String,
+    /// Firmware revision.
     pub firm: String,
+    /// Maximum data transfer size in bytes.
     pub mts: usize,
+    /// Maximum queue entries supported.
     pub mqe: u16,
+    /// Minimum memory page size (from CAP.MPSMIN).
     pub min_pg: usize,
 }
 
+/// NVMe controller handle.
+///
+/// Manages admin and I/O queues, and provides access to controller features.
 pub struct Ctrl<A: Dma> {
     mmio: usize,
     mmio_size: usize,
@@ -40,6 +50,7 @@ pub struct Ctrl<A: Dma> {
 }
 
 impl<A: Dma> Ctrl<A> {
+    /// Creates a new controller from a PCI BAR0 physical address.
     pub fn new(mmio_phys: usize, alloc: A) -> Result<Self> {
         let alloc = Arc::new(alloc);
 
@@ -101,7 +112,11 @@ impl<A: Dma> Ctrl<A> {
         let mqes = ((cap & 0xFFFF) + 1) as usize;
         let admin_size = mqes;
 
-        let admin = Queue::new(0, admin_size, self.alloc.as_ref())?;
+        let mps_min = ((cap >> 48) & 0xF) as usize;
+        let nvme_min_pg = 1 << (12 + mps_min);
+        let page_size = self.alloc.page_size().max(nvme_min_pg);
+
+        let admin = Queue::new(0, admin_size, page_size, self.alloc.as_ref())?;
 
         unsafe {
             self.write(reg::ASQ, admin.sq_phys());
@@ -121,7 +136,7 @@ impl<A: Dma> Ctrl<A> {
         *self.admin.lock() = Some(admin);
 
         let id_buf_size = 4096;
-        let id_buf = unsafe { self.alloc.alloc(id_buf_size) };
+        let id_buf = unsafe { self.alloc.alloc(id_buf_size, page_size) };
         if id_buf == 0 {
             return Err(NVMeError::OoRam);
         }
@@ -137,10 +152,7 @@ impl<A: Dma> Ctrl<A> {
         let model = ctrl_id.model().to_string();
         let firm = ctrl_id.firm().to_string();
 
-        let mps_bytes = ((cap >> 48) & 0xF) as usize;
-        let min_pg = 1 << (12 + mps_bytes);
-
-        let mts = ctrl_id.max_xfer(min_pg).unwrap_or(usize::MAX);
+        let mts = ctrl_id.max_xfer(page_size).unwrap_or(usize::MAX);
 
         self.data = Arc::new(CtrlData {
             serial,
@@ -148,10 +160,10 @@ impl<A: Dma> Ctrl<A> {
             firm,
             mts,
             mqe: mqes as u16,
-            min_pg,
+            min_pg: page_size,
         });
 
-        unsafe { self.alloc.free(id_buf, id_buf_size) };
+        unsafe { self.alloc.free(id_buf, id_buf_size, page_size) };
 
         let io_size = mqes.min(256);
         self.new_ioq(io_size)?;
@@ -168,6 +180,7 @@ impl<A: Dma> Ctrl<A> {
         };
     }
 
+    /// Submits a command to the admin queue.
     pub fn admin_cmd(&self, cmd: &Cmd) -> Result<()> {
         if let Some(ref admin) = *self.admin.lock() {
             admin.submit(cmd, self.mmio, self.dstrd)?;
@@ -176,6 +189,7 @@ impl<A: Dma> Ctrl<A> {
         return Err(NVMeError::InvQp);
     }
 
+    /// Submits a command to an I/O queue (round-robin selection).
     pub fn io_cmd(&self, cmd: &Cmd) -> Result<()> {
         let io = self.io.lock();
         if io.is_empty() {
@@ -192,6 +206,7 @@ impl<A: Dma> Ctrl<A> {
         return Ok(());
     }
 
+    /// Creates a new I/O queue pair with the given size.
     pub fn new_ioq(&self, size: usize) -> Result<()> {
         let mut qid = 0;
         for i in 1..=self.data.mqe {
@@ -204,7 +219,7 @@ impl<A: Dma> Ctrl<A> {
             return Err(NVMeError::FullQp);
         }
 
-        let io = Queue::new(qid, size, self.alloc.as_ref())?;
+        let io = Queue::new(qid, size, self.data.min_pg, self.alloc.as_ref())?;
 
         let cmd = Cmd::cq_create(qid, size as u16, io.cq_phys());
         self.admin_cmd(&cmd)?;
@@ -216,6 +231,7 @@ impl<A: Dma> Ctrl<A> {
         return Ok(());
     }
 
+    /// Removes an I/O queue pair.
     pub fn rm_ioq(&self, qid: u16) -> Result<()> {
         if qid == 0 {
             return Err(NVMeError::InvQp);
@@ -247,6 +263,7 @@ impl<A: Dma> Ctrl<A> {
         return Ok(());
     }
 
+    /// Performs a clean shutdown of the controller.
     pub fn shutdown(&self) -> Result<()> {
         self.active.store(false, Ordering::SeqCst);
 
@@ -299,6 +316,7 @@ impl<A: Dma> Ctrl<A> {
         return Ok(());
     }
 
+    /// Resumes the controller after shutdown.
     pub fn resume(&self) -> Result<()> {
         unsafe {
             let mut cc: u32 = self.read(reg::CC);
@@ -318,16 +336,20 @@ impl<A: Dma> Ctrl<A> {
         return Ok(());
     }
 
+    /// Returns a reference to the DMA allocator.
     pub fn alloc(&self) -> &A {
         return &self.alloc;
     }
 
+    /// Returns controller identification data.
     pub fn data(&self) -> &CtrlData {
         return &self.data;
     }
 
+    /// Returns a list of active namespace IDs.
     pub fn reg_nss(&self) -> Result<Vec<u32>> {
-        let buf = unsafe { self.alloc.alloc(4096) };
+        let page_size = self.data.min_pg;
+        let buf = unsafe { self.alloc.alloc(4096, page_size) };
         if buf == 0 {
             return Err(NVMeError::OoRam);
         }
@@ -353,11 +375,12 @@ impl<A: Dma> Ctrl<A> {
         }
 
         unsafe {
-            self.alloc.free(buf, 4096);
+            self.alloc.free(buf, 4096, page_size);
         }
         return Ok(ns_list);
     }
 
+    /// Retrieves a log page into the provided buffer.
     pub fn log_page(&self, lid: u8, buf: &mut [u8]) -> Result<()> {
         if buf.len() < 4 || buf.len() % 4 != 0 {
             return Err(NVMeError::InvBuf);
@@ -371,8 +394,10 @@ impl<A: Dma> Ctrl<A> {
         return Ok(());
     }
 
+    /// Retrieves SMART/Health information log.
     pub fn smart_log(&self) -> Result<crate::id::LogSmart> {
-        let buf = unsafe { self.alloc.alloc(512) };
+        let page_size = self.data.min_pg;
+        let buf = unsafe { self.alloc.alloc(512, page_size) };
         if buf == 0 {
             return Err(NVMeError::OoRam);
         }
@@ -387,15 +412,17 @@ impl<A: Dma> Ctrl<A> {
 
         let smart = unsafe { (buf as *const LogSmart).read_volatile() };
         unsafe {
-            self.alloc.free(buf, 512);
+            self.alloc.free(buf, 512, page_size);
         }
 
         return Ok(smart);
     }
 
+    /// Retrieves error log entries.
     pub fn error_log(&self, entries: usize) -> Result<Vec<LogErr>> {
+        let page_size = self.data.min_pg;
         let buf_size = entries * size_of::<LogErr>();
-        let buf = unsafe { self.alloc.alloc(buf_size) };
+        let buf = unsafe { self.alloc.alloc(buf_size, page_size) };
         if buf == 0 {
             return Err(NVMeError::OoRam);
         }
@@ -419,18 +446,20 @@ impl<A: Dma> Ctrl<A> {
                 }
                 errors.push(entry);
             }
-            self.alloc.free(buf, buf_size);
+            self.alloc.free(buf, buf_size, page_size);
         }
 
         return Ok(errors);
     }
 
+    /// Sets a feature value.
     pub fn set_feat(&self, fid: u8, value: u32) -> Result<()> {
         let cmd = Cmd::set_feat(fid, value);
         self.admin_cmd(&cmd)?;
         return Ok(());
     }
 
+    /// Gets a feature value.
     pub fn get_feat(&self, fid: u8) -> Result<u32> {
         let cmd = Cmd::get_feat(fid);
         let cqe = self.adm_cmd_res(&cmd)?;
@@ -444,6 +473,7 @@ impl<A: Dma> Ctrl<A> {
         return Err(NVMeError::InvQp);
     }
 
+    /// Sets the number of submission and completion queues.
     pub fn set_qs_n(&self, nsq: u16, ncq: u16) -> Result<(u16, u16)> {
         let value = (((ncq - 1) as u32) << 16) | ((nsq - 1) as u32);
         let cmd = Cmd::set_feat(crate::id::FT_NQ, value);
@@ -455,6 +485,7 @@ impl<A: Dma> Ctrl<A> {
         return Ok((allocd_nsq, allocd_ncq));
     }
 
+    /// Sets the number of I/O queue pairs.
     pub fn set_ioq_cnt(&self, count: u16) -> Result<u16> {
         if count == 0 {
             return Ok(0);
@@ -489,6 +520,7 @@ impl<A: Dma> Ctrl<A> {
         return Ok(target);
     }
 
+    /// Enables asynchronous event notifications.
     pub fn en_async_ev(&self) -> Result<()> {
         let mut aec = crate::id::AsyncEventConfig::new();
         aec.en_smart_hlt().en_ns_attr().en_fw_actv();
@@ -496,16 +528,19 @@ impl<A: Dma> Ctrl<A> {
         return self.set_feat(crate::id::FT_ASYNC, aec.value);
     }
 
+    /// Performs block erase sanitise operation.
     pub fn block_erase(&self) -> Result<()> {
         let cmd = Cmd::sanitise(0x02, false, 0, false, false);
         return self.admin_cmd(&cmd);
     }
 
+    /// Performs overwrite sanitise operation.
     pub fn overwrite(&self, passes: u8, invert: bool) -> Result<()> {
         let cmd = Cmd::sanitise(0x03, false, passes, invert, false);
         return self.admin_cmd(&cmd);
     }
 
+    /// Performs cryptographic erase sanitise operation.
     pub fn crypto_erase(&self) -> Result<()> {
         let cmd = Cmd::sanitise(0x04, false, 0, false, false);
         return self.admin_cmd(&cmd);

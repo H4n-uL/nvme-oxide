@@ -1,4 +1,4 @@
-#[repr(C)]
+#[repr(C, align(64))]
 #[derive(Clone, Copy)]
 pub struct Sqe {
     pub cdw0: u32,
