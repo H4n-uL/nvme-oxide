@@ -1,6 +1,6 @@
 [package]
 name = "nvme-oxide"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 repository = "https://github.com/H4n-uL/nvme-oxide"
 description = "Bare-metal lightweight NVMe driver"

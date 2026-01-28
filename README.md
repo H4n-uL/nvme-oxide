@@ -19,9 +19,9 @@ Implement the `Dma` trait to provide DMA allocation and MMIO mapping:
 
 ```rust
 impl Dma for MyDma {
-    unsafe fn alloc(&self, size: usize, align: usize) -> usize { /* physically contiguous */ }
+    unsafe fn alloc(&self, size: usize, align: usize) -> Option<usize> { /* physically contiguous */ }
     unsafe fn free(&self, addr: usize, size: usize, align: usize) { }
-    unsafe fn map_mmio(&self, phys: usize, size: usize) -> usize { }
+    unsafe fn map_mmio(&self, phys: usize, size: usize) -> Option<usize> { }
     unsafe fn unmap_mmio(&self, virt: usize, size: usize) { }
     fn virt_to_phys(&self, va: usize) -> usize { }
     fn page_size(&self) -> usize { /* >= 4096, must be >= NVMe CAP.MPSMIN */ }
