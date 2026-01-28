@@ -66,10 +66,10 @@ impl<A: Dma> Sq<A> {
     /// Creates a new Submission Queue.
     pub fn new(qid: u16, size: usize, align: usize, alloc: &A) -> Result<Self> {
         let bytes = size * core::mem::size_of::<Sqe>();
-        let addr = unsafe { alloc.alloc(bytes, align) };
-        if addr == 0 {
-            return Err(NVMeError::OoRam);
-        }
+
+        let addr = unsafe {
+            alloc.alloc(bytes, align)
+        }.ok_or(NVMeError::OoRam)?;
 
         unsafe {
             (addr as *mut u8).write_bytes(0, bytes);
@@ -149,10 +149,10 @@ impl<A: Dma> Cq<A> {
     /// Creates a new Completion Queue.
     pub fn new(qid: u16, size: usize, align: usize, alloc: &A) -> Result<Self> {
         let bytes = size * core::mem::size_of::<Cqe>();
-        let addr = unsafe { alloc.alloc(bytes, align) };
-        if addr == 0 {
-            return Err(NVMeError::OoRam);
-        }
+
+        let addr = unsafe {
+            alloc.alloc(bytes, align)
+        }.ok_or(NVMeError::OoRam)?;
 
         unsafe {
             (addr as *mut u8).write_bytes(0, bytes);

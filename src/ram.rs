@@ -14,16 +14,16 @@ use crate::{NVMeError, Result};
 pub trait Dma: Send + Sync {
     /// Allocates physically contiguous memory.
     ///
-    /// Returns the virtual address of the allocated memory, or 0 on failure.
-    unsafe fn alloc(&self, size: usize, align: usize) -> usize;
+    /// Returns the virtual address of the allocated memory, or `None` on failure.
+    unsafe fn alloc(&self, size: usize, align: usize) -> Option<usize>;
 
     /// Frees previously allocated memory.
     unsafe fn free(&self, addr: usize, size: usize, align: usize);
 
     /// Maps MMIO region into virtual address space.
     ///
-    /// Returns the virtual address of the mapped region, or 0 on failure.
-    unsafe fn map_mmio(&self, phys: usize, size: usize) -> usize;
+    /// Returns the virtual address of the mapped region, or `None` on failure.
+    unsafe fn map_mmio(&self, phys: usize, size: usize) -> Option<usize>;
 
     /// Unmaps a previously mapped MMIO region.
     unsafe fn unmap_mmio(&self, virt: usize, size: usize);
@@ -83,11 +83,10 @@ pub fn build_prp<A: Dma>(
 
     let list_sz = (pages - 1) * 8;
     let list_aligned = (list_sz + page_mask) & !page_mask;
-    let list_va = unsafe { alloc.alloc(list_aligned, page_size) };
 
-    if list_va == 0 {
-        return Err(NVMeError::OoRam);
-    }
+    let list_va = unsafe {
+        alloc.alloc(list_aligned, page_size)
+    }.ok_or(NVMeError::OoRam)?;
 
     let list_ptr = list_va as *mut u64;
     for i in 0..(pages - 1) {

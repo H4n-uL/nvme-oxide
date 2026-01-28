@@ -26,26 +26,26 @@ impl<A: Dma> Ns<A> {
     /// Creates a new namespace handle by querying the controller.
     pub fn new(ctrl: Arc<Ctrl<A>>, nsid: u32) -> Result<Self> {
         let page_size = ctrl.data().min_pg;
-        let buffer = unsafe { ctrl.alloc().alloc(4096, page_size) };
-        if buffer == 0 {
-            return Err(NVMeError::OoRam);
-        }
+
+        let buf = unsafe {
+            ctrl.alloc().alloc(4096, page_size)
+        }.ok_or(NVMeError::OoRam)?;
 
         unsafe {
-            (buffer as *mut u8).write_bytes(0, 4096);
+            (buf as *mut u8).write_bytes(0, 4096);
         }
 
-        let buffer_phys = ctrl.alloc().virt_to_phys(buffer) as u64;
-        let cmd = Cmd::id_ns(nsid, buffer_phys);
+        let buf_phys = ctrl.alloc().virt_to_phys(buf) as u64;
+        let cmd = Cmd::id_ns(nsid, buf_phys);
         ctrl.admin_cmd(&cmd)?;
 
         unsafe {
-            let ns_id = &*(buffer as *const NsId);
+            let ns_id = &*(buf as *const NsId);
 
             let blk_sz = ns_id.lba_size();
             let blk_cnt = ns_id.nsze;
 
-            ctrl.alloc().free(buffer, 4096, page_size);
+            ctrl.alloc().free(buf, 4096, page_size);
 
             return Ok(Self {
                 ctrl,
@@ -125,10 +125,10 @@ impl<A: Dma> Ns<A> {
         }
 
         let page_size = self.ctrl.data().min_pg;
-        let range_buf = unsafe { self.ctrl.alloc().alloc(16, page_size) };
-        if range_buf == 0 {
-            return Err(NVMeError::OoRam);
-        }
+
+        let range_buf = unsafe {
+            self.ctrl.alloc().alloc(16, page_size)
+        }.ok_or(NVMeError::OoRam)?;
 
         let range = DsmRange {
             context_attr: 0,

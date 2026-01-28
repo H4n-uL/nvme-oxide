@@ -54,12 +54,11 @@ impl<A: Dma> Ctrl<A> {
     pub fn new(mmio_phys: usize, alloc: A) -> Result<Self> {
         let alloc = Arc::new(alloc);
 
-        let init_mmio = unsafe { alloc.map_mmio(mmio_phys, 0x1000) };
-        if init_mmio == 0 {
-            return Err(NVMeError::MapFail);
-        }
+        let init_mmio = unsafe {
+            alloc.map_mmio(mmio_phys, 0x1000)
+        }.ok_or(NVMeError::MapFail)?;
 
-        let cap: u64 = unsafe { (init_mmio as *const u64).read_volatile() };
+        let cap = unsafe { (init_mmio as *const u64).read_volatile() };
         let dstrd = ((cap >> 32) & 0xF) as u8;
         let mqes = ((cap & 0xFFFF) + 1) as usize;
 
@@ -67,10 +66,9 @@ impl<A: Dma> Ctrl<A> {
 
         unsafe { alloc.unmap_mmio(init_mmio, 0x1000) };
 
-        let mmio = unsafe { alloc.map_mmio(mmio_phys, mmio_size) };
-        if mmio == 0 {
-            return Err(NVMeError::MapFail);
-        }
+        let mmio = unsafe {
+            alloc.map_mmio(mmio_phys, mmio_size)
+        }.ok_or(NVMeError::MapFail)?;
 
         let mut ctrl = Self {
             mmio,
@@ -136,10 +134,10 @@ impl<A: Dma> Ctrl<A> {
         *self.admin.lock() = Some(admin);
 
         let id_buf_size = 4096;
-        let id_buf = unsafe { self.alloc.alloc(id_buf_size, page_size) };
-        if id_buf == 0 {
-            return Err(NVMeError::OoRam);
-        }
+        let id_buf = unsafe {
+            self.alloc.alloc(id_buf_size, page_size)
+        }.ok_or(NVMeError::OoRam)?;
+
         unsafe { (id_buf as *mut u8).write_bytes(0, id_buf_size) };
 
         let id_buf_phys = self.alloc.virt_to_phys(id_buf) as u64;
@@ -349,10 +347,10 @@ impl<A: Dma> Ctrl<A> {
     /// Returns a list of active namespace IDs.
     pub fn reg_nss(&self) -> Result<Vec<u32>> {
         let page_size = self.data.min_pg;
-        let buf = unsafe { self.alloc.alloc(4096, page_size) };
-        if buf == 0 {
-            return Err(NVMeError::OoRam);
-        }
+
+        let buf = unsafe {
+            self.alloc.alloc(4096, page_size)
+        }.ok_or(NVMeError::OoRam)?;
 
         unsafe {
             (buf as *mut u8).write_bytes(0, 4096);
@@ -397,10 +395,10 @@ impl<A: Dma> Ctrl<A> {
     /// Retrieves SMART/Health information log.
     pub fn smart_log(&self) -> Result<crate::id::LogSmart> {
         let page_size = self.data.min_pg;
-        let buf = unsafe { self.alloc.alloc(512, page_size) };
-        if buf == 0 {
-            return Err(NVMeError::OoRam);
-        }
+
+        let buf = unsafe {
+            self.alloc.alloc(512, page_size)
+        }.ok_or(NVMeError::OoRam)?;
 
         unsafe {
             (buf as *mut u8).write_bytes(0, 512);
@@ -422,10 +420,10 @@ impl<A: Dma> Ctrl<A> {
     pub fn error_log(&self, entries: usize) -> Result<Vec<LogErr>> {
         let page_size = self.data.min_pg;
         let buf_size = entries * size_of::<LogErr>();
-        let buf = unsafe { self.alloc.alloc(buf_size, page_size) };
-        if buf == 0 {
-            return Err(NVMeError::OoRam);
-        }
+
+        let buf = unsafe {
+            self.alloc.alloc(buf_size, page_size)
+        }.ok_or(NVMeError::OoRam)?;
 
         unsafe {
             (buf as *mut u8).write_bytes(0, buf_size);
